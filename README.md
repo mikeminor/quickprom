@@ -6,12 +6,11 @@ for graphing the data.
 
 Installation:
 
-Clone the repo<br>
-Edit .env to supply your own domain, ACME e-mail, and authentication string.<br>
-Make sure to enable ACME in .env or you won't be able to access sites.<br>
-Make sure traefik/acme.json has chmod 600 and correct ownership.<br>
-You can generate your auth with htpasswd -nb user pass<br>
-docker-compose up -d<br>
-
+Clone the repo
+Edit .env to supply your own domain, ACME e-mail, and authentication string.
+Make sure to enable ACME in .env or you won't be able to access sites.
+Make sure traefik/acme.json has chmod 600 and correct ownership.
+You can generate your auth with htpasswd -nb user pass
+docker-compose up -d
 
 
