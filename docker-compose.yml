@@ -1,0 +1,108 @@
+version: '3.5'
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+
+
+services:
+
+  traefik:
+    image: traefik
+    container_name: traefik
+    command:  --api --defaultentryPoints='http,https' \
+              --entryPoints='Name:http Address::80 Redirect.EntryPoint:https' \
+              --entryPoints='Name:https Address::443 TLS' \
+              --docker --docker.domain="${TRAEFIK_AUTODOMAIN:-docker.localhost}" \
+              --docker.watch=true --docker.endpoint="unix:///var/run/docker.sock" \
+              --docker.exposedbydefault=false --docker.network="traefik_proxy" \
+              --acme=${TRAEFIK_ACME} --acme.onhostrule --acme.entrypoint=https \
+              --acme.email=${TRAEFIK_EMAIL:-mail@youremail.com} --acme.httpchallenge \
+              --acme.httpchallenge.entrypoint=http --acme.storage="acme.json" \
+              --file --file.filename="rules.toml" file.watch=true 
+
+    networks:
+      - proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    labels:
+      traefik.port: 8080
+      traefik.frontend.auth.basic: "${TRAEFIK_AUTH}"
+      traefik.enable: true
+      traefik.frontend.rule: "Host:traefik.${TRAEFIK_AUTODOMAIN}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.toml:/traefik.toml
+      - ./traefik/acme.json:/acme.json
+      - ./traefik/rules.toml:/rules.toml
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --web.console.templates=/etc/prometheus/consoles
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    depends_on:
+      - cadvisor
+    expose:
+      - 9090
+    networks:
+     - proxy
+     - back
+    labels:
+      traefik.enable: true
+      traefik.frontend.rule: "Host:prometheus.${TRAEFIK_AUTODOMAIN}"
+      traefik.frontend.basic.auth: "${TRAEFIK_AUTH}"
+      traefik.backend: "prometheus"
+      traefik.docker.network: "traefik_proxy"
+      traefik.port: 9090
+  cadvisor:
+    image: google/cadvisor:latest
+    volumes:
+     - /:/rootfs:ro
+     - /var/run:/var/run:rw
+     - /sys:/sys:ro
+     - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - back
+
+#  Possibly remove node exporter from this stack and run it separately as a system service, as recommended by prometheus developers.
+  nodeexporter:
+    image: prom/node-exporter:latest
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - back
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana-data:/var/lib/grafana
+    labels:
+      traefik.enable: true
+      traefik.frontend.rule: "Host:grafana.${TRAEFIK_AUTODOMAIN}"
+      traefik.backend: "grafana"
+      traefik.docker.network: "traefik_proxy"
+      traefik.port: 3000
+    networks:
+      - proxy
+      - back
+
+networks:
+  proxy:
+    name: traefik_proxy
+  back:
+    internal: true
